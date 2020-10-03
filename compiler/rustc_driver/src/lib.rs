@@ -134,9 +134,58 @@ pub fn diagnostics_registry() -> Registry {
     Registry::new(&rustc_error_codes::DIAGNOSTICS)
 }
 
+pub struct RunCompiler<'a> {
+    at_args: &'a [String],
+    callbacks: &'a mut (dyn Callbacks + Send),
+    file_loader: Option<Box<dyn FileLoader + Send + Sync>>,
+    emitter: Option<Box<dyn Write + Send>>,
+    make_codegen_backend:
+        Option<Box<dyn FnOnce(&config::Options) -> Box<dyn CodegenBackend> + Send>>,
+}
+
+impl<'a> RunCompiler<'a> {
+    pub fn new(at_args: &'a [String], callbacks: &'a mut (dyn Callbacks + Send)) -> Self {
+        RunCompiler {
+            at_args,
+            callbacks,
+            file_loader: None,
+            emitter: None,
+            make_codegen_backend: None,
+        }
+    }
+
+    pub fn file_loader(&mut self, file_loader: Box<dyn FileLoader + Send + Sync>) -> &mut Self {
+        self.file_loader = Some(file_loader);
+        self
+    }
+
+    pub fn emitter(&mut self, emitter: Box<dyn Write + Send>) -> &mut Self {
+        self.emitter = Some(emitter);
+        self
+    }
+
+    pub fn make_codegen_backend(
+        &mut self,
+        make_codegen_backend: Box<dyn FnOnce(&config::Options) -> Box<dyn CodegenBackend> + Send>,
+    ) -> &mut Self {
+        self.make_codegen_backend = Some(make_codegen_backend);
+        self
+    }
+
+    pub fn run(self) -> interface::Result<()> {
+        run_compiler(
+            self.at_args,
+            self.callbacks,
+            self.file_loader,
+            self.emitter,
+            self.make_codegen_backend,
+        )
+    }
+}
+
 // Parse args and run the compiler. This is the primary entry point for rustc.
 // The FileLoader provides a way to load files from sources other than the file system.
-pub fn run_compiler(
+fn run_compiler(
     at_args: &[String],
     callbacks: &mut (dyn Callbacks + Send),
     file_loader: Option<Box<dyn FileLoader + Send + Sync>>,
